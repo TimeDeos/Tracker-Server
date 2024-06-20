@@ -3,7 +3,6 @@ import requests
 import threading
 import time
 from datetime import datetime, timedelta
-import pytz
 import json
 import re
 
@@ -19,6 +18,7 @@ previous_user_data_3 = {}
 webhook_url_1 = 'https://discord.com/api/webhooks/1248280111950725222/qDyakT-1dUahZB0nlD3FGyfrqbPDH8vjxon-g3OvDGCALgGnhvGI7E8ZVU1c5nhM-Ozq'
 webhook_url_2 = 'https://discord.com/api/webhooks/1250742183267663894/zWPKH9mdXFC8cB_63A3WZenlFLWrU_IAxTcTZRWP5PhUZQpyAXyW-FAE2KpWenPDdcnY'
 webhook_url_3 = 'https://discord.com/api/webhooks/1252967328908447765/eZX2TbqPUJOSxaJreotfIXSVy1k5Wpcg-0pqNAocbrH10KzqWktzkCy4Hndk9E8l-3PT'
+central_webhook_url = 'https://discord.com/api/webhooks/1253213159473545236/_5UTYYF-Bu6LIxM-nTA6PPpdrFdP1OC4SCiyg1tAvV4h8qRiUTMNKQiQkSjfdLB51X3t'
 
 # Fetch conversion rates from GitHub
 conversion_url = 'https://raw.githubusercontent.com/TimeDeos/Tracker/main/Data.json'
@@ -29,8 +29,8 @@ if response.status_code == 200:
     RR_RATE = conversion_data['exchangeRate']['Rerolls']
     print(f"Successfully fetched conversion rates: GEMS_RATE={GEMS_RATE}, RR_RATE={RR_RATE}")
 else:
-    GEMS_RATE = 0.05  # Default value
-    RR_RATE = 6.0  # Default value
+    GEMS_RATE = 0.075  # Default value
+    RR_RATE = 8.5  # Default value
     print("Failed to fetch conversion rates, using default values.")
 
 # Timeout duration in seconds
@@ -97,19 +97,36 @@ def send_combined_webhook(combined_data):
     total_gems = sum(data['gems'] for data in combined_data.values())
     total_rr = sum(data['rr'] for data in combined_data.values())
 
-    total_string = f"Total: <:diamond:1244316023708979271> {total_gems:,} ; <:rr:1244982385242804304> {total_rr:,}\n"
-    data_string = "\n".join([
-        f"[{data['level']}] {username} - <:diamond:1244316023708979271> {data['gems']:,} <:rr:1244982385242804304> {data['rr']}"
-        for username, data in combined_data.items()
-    ])
+    total_gems_gained = sum(data['gems'] - previous_user_data_1.get(username, {}).get('gems', data['gems']) for username, data in user_data_1.items())
+    total_rr_gained = sum(data['rr'] - previous_user_data_1.get(username, {}).get('rr', data['rr']) for username, data in user_data_1.items())
+    total_gems_gained += sum(data['gems'] - previous_user_data_2.get(username, {}).get('gems', data['gems']) for username, data in user_data_2.items())
+    total_rr_gained += sum(data['rr'] - previous_user_data_2.get(username, {}).get('rr', data['rr']) for username, data in user_data_2.items())
+    total_gems_gained += sum(data['gems'] - previous_user_data_3.get(username, {}).get('gems', data['gems']) for username, data in user_data_3.items())
+    total_rr_gained += sum(data['rr'] - previous_user_data_3.get(username, {}).get('rr', data['rr']) for username, data in user_data_3.items())
 
-    gmt_plus_7 = pytz.timezone('Asia/Bangkok')
-    current_time_gmt_plus_7 = datetime.now(gmt_plus_7)
-    formatted_time = current_time_gmt_plus_7.strftime('%H:%M:%S | %Y-%m-%d')
+    gems_per_hour = total_gems_gained
+    rr_per_hour = total_rr_gained
+    dollars_per_hour_gems = (gems_per_hour / 1000) * GEMS_RATE
+    dollars_per_hour_rr = (rr_per_hour / 1000) * RR_RATE
+    total_dollars_per_hour = dollars_per_hour_gems + dollars_per_hour_rr
+
+    tracker_status = [
+        f"Tracker 1: {'<:green:1018976505159749664>' if any(data['last_updated'] > datetime.now() - timedelta(seconds=timeout) for data in user_data_1.values()) else '<:red:1018976808651960320>'}",
+        f"Tracker 2: {'<:green:1018976505159749664>' if any(data['last_updated'] > datetime.now() - timedelta(seconds=timeout) for data in user_data_2.values()) else '<:red:1018976808651960320>'}",
+        f"Tracker 3: {'<:green:1018976505159749664>' if any(data['last_updated'] > datetime.now() - timedelta(seconds=timeout) for data in user_data_3.values()) else '<:red:1018976808651960320>'}",
+    ]
+
+    total_string = f"Total: <:diamond:1244316023708979271> {total_gems:,} ; <:rr:1244982385242804304> {total_rr:,}\n"
+    tracker_string = "\n".join(tracker_status)
+    stats_string = (
+        f"\n\n**<:diamond:1244316023708979271> Per Hour:** {gems_per_hour:,}\n"
+        f"**<:rr:1244982385242804304> Per Hour:** {rr_per_hour:,}\n"
+        f"**$/Hour:** ${total_dollars_per_hour:.2f}\n"
+    )
 
     embed = {
-        "title": "Gato Status - Combined Data",
-        "description": total_string + data_string,
+        "title": "Gato Status - Anime Defenders",
+        "description": total_string + tracker_string + stats_string,
         "color": 5814783,
         "footer": {
             "text": f"Current Rate: | Gems: {GEMS_RATE}/k | Rerolls: {RR_RATE}/k",
@@ -117,9 +134,7 @@ def send_combined_webhook(combined_data):
         },
     }
 
-    send_webhook(embed, webhook_url_1)
-    send_webhook(embed, webhook_url_2)
-    send_webhook(embed, webhook_url_3)
+    send_webhook(embed, central_webhook_url)
 
 def send_webhook(embed, webhook_url, mention_everyone=False):
     headers = {
@@ -137,81 +152,21 @@ def send_webhook(embed, webhook_url, mention_everyone=False):
 
 def post_webhook():
     global previous_user_data_1, previous_user_data_2, previous_user_data_3
-
     while True:
-        # Calculate the time until the next full hour
-        now = datetime.now()
-        next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-        time_to_next_hour = (next_hour - now).seconds
-        time.sleep(time_to_next_hour)  # Sleep until the next full hour
+        time.sleep(3600)  # 1 hour interval
+        if user_data_1:
+            previous_user_data_1 = user_data_1.copy()
+            send_webhook(user_data_1, webhook_url_1)
+        if user_data_2:
+            previous_user_data_2 = user_data_2.copy()
+            send_webhook(user_data_2, webhook_url_2)
+        if user_data_3:
+            previous_user_data_3 = user_data_3.copy()
+            send_webhook(user_data_3, webhook_url_3)
 
-        print("Supposed to send..")
-
-        for user_data, previous_user_data, webhook_url in [
-            (user_data_1, previous_user_data_1, webhook_url_1),
-            (user_data_2, previous_user_data_2, webhook_url_2),
-            (user_data_3, previous_user_data_3, webhook_url_3)
-        ]:
-            inactive_users = []
-            gains = {}
-            total_gems_gained = 0
-            total_rr_gained = 0
-            total_gems = 0
-            total_rr = 0
-
-            for username, current_data in user_data.items():
-                previous_data = previous_user_data.get(username, {'gems': current_data['gems'], 'rr': current_data['rr']})
-                gems_gained = current_data['gems'] - previous_data['gems']
-                rr_gained = current_data['rr'] - previous_data['rr']
-                gains[username] = {'gems': gems_gained, 'rr': rr_gained}
-                total_gems_gained += gems_gained
-                total_rr_gained += rr_gained
-                total_gems += current_data['gems']
-                total_rr += current_data['rr']
-
-                if (datetime.now() - current_data.get('last_updated', datetime.now())) > timedelta(seconds=timeout):
-                    inactive_users.append(username)
-
-            previous_user_data.update({username: {'gems': data['gems'], 'rr': data['rr']} for username, data in user_data.items()})
-
-            gems_per_hour = total_gems_gained
-            rr_per_hour = total_rr_gained
-            dollars_per_hour_gems = (gems_per_hour / 1000) * GEMS_RATE
-            dollars_per_hour_rr = (rr_per_hour / 1000) * RR_RATE
-            total_dollars_per_hour = dollars_per_hour_gems + dollars_per_hour_rr
-
-            total_string = f"Total: <:diamond:1244316023708979271> {total_gems:,} ; <:rr:1244982385242804304> {total_rr:,}\n"
-            data_string = "\n".join([
-                f"[{current_data['level']}] {username} - <:diamond:1244316023708979271> {current_data['gems']:,} <:rr:1244982385242804304> {current_data['rr']} [+{gains[username]['gems']:,};+{gains[username]['rr']}]"
-                if username not in inactive_users
-                else f"⚠️[{current_data['level']}] {username} - No Connection/Crashed"
-                for username, current_data in user_data.items()
-            ])
-
-            stats_string = (
-                f"\n\n**<:diamond:1244316023708979271> Per Hour:** {gems_per_hour:,}\n"
-                f"**<:rr:1244982385242804304> Per Hour:** {rr_per_hour:,}\n"
-                f"**<:diamond:1244316023708979271> USD Per Hour:** ${dollars_per_hour_gems:.2f}\n"
-                f"**<:rr:1244982385242804304> USD Per Hour:** ${dollars_per_hour_rr:.2f}\n"
-                f"**Total USD Per Hour:** ${total_dollars_per_hour:.2f}\n"
-                f"\n**Inactive Users:**\n" + "\n".join([f"{username}" for username in inactive_users]) + "\n"
-            )
-
-            gmt_plus_7 = pytz.timezone('Asia/Bangkok')
-            current_time_gmt_plus_7 = datetime.now(gmt_plus_7)
-            formatted_time = current_time_gmt_plus_7.strftime('%H:%M:%S | %Y-%m-%d')
-
-            embed = {
-                "title": f"Gato Status - {formatted_time}",
-                "description": total_string + data_string + stats_string,
-                "color": 5814783,
-                "footer": {
-                    "text": f"Current Rate: | Gems: {GEMS_RATE}/k | Rerolls: {RR_RATE}/k",
-                    "icon_url": "https://cdn.discordapp.com/emojis/1252850503042203739.webp?size=128&quality=lossless"
-                },
-            }
-
-            send_webhook(embed, webhook_url)
+        # Send the combined status to the central webhook
+        combined_data = combine_user_data(user_data_1, user_data_2, user_data_3)
+        send_combined_webhook(combined_data)
 
 # Start the background thread
 thread = threading.Thread(target=post_webhook, daemon=True)
