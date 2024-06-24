@@ -96,10 +96,10 @@ def hourlyCache():
                     sendEmbed(webhook_url, embed)
                     print('Webhook sent')
                 else:
-                    #print(f"Webhook error for gato{i}")  # debug
-                    # pass
+                    print(f"Webhook error for gato{i}")  # debug
+                    pass
             except Exception as e:
-                #print(f"file error at gato{i}.txt: {e}")  # debug
+                print(f"file error at gato{i}.txt: {e}")  # debug
                 continue
 
 # Start the thread for hourly caching
