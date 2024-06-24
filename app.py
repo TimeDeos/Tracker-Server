@@ -5,7 +5,7 @@ import threading
 
 koala = Flask(__name__)
 
-timeout = 1  # 1 hour in seconds
+timeout = 3600  # 1 hour in seconds
 
 # logic to get webhooks through ur shitty github account or whatever ill do that later
 # for now, i have a static webhook url hehe
